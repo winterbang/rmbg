@@ -1,0 +1,12 @@
+transformers
+pillow
+torch
+torchvision
+fastapi
+uvicorn
+python-multipart
+huggingface_hub
+numpy
+safetensors
+accelerate
+scipy

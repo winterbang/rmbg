@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv
+venv/
+env/
+.env
+no_bg_*.png
+*.jpg
+*.jpeg
+*.png
+!logo.png
+download_space_code.py
+inspect_config.py
+space_app.py
+.idea/
+.vscode/
