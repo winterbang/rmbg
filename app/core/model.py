@@ -1,51 +1,49 @@
+import logging
 import torch
-from PIL import Image
 import numpy as np
+from PIL import Image
 from torchvision import transforms
 from huggingface_hub import hf_hub_download
 from transformers import AutoConfig, AutoModelForImageSegmentation
 from safetensors.torch import load_file
-import os
+from typing import Tuple, Union, Optional
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 class BackgroundRemover:
     def __init__(self):
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
+        self.device = torch.device(settings.DEVICE)
+        logger.info(f"Using device: {self.device}")
         
         self.model = self._load_model()
         
     def _load_model(self):
-        print("Loading RMBG-2.0 model...")
+        logger.info(f"Loading {settings.MODEL_ID} model...")
         try:
-            # Prevent meta tensors issues by environment variable if needed, 
-            # though usually handled by transformers now.
-            # os.environ["TRANSFORMERS_NO_META_DEVICE"] = "1"
-            
-            config = AutoConfig.from_pretrained("briaai/RMBG-2.0", trust_remote_code=True)
+            config = AutoConfig.from_pretrained(settings.MODEL_ID, trust_remote_code=True)
             model = AutoModelForImageSegmentation.from_config(config, trust_remote_code=True)
             
             # Load weights manually to ensure safe tensors loading
-            model_path = hf_hub_download(repo_id="briaai/RMBG-2.0", filename="model.safetensors")
+            model_path = hf_hub_download(repo_id=settings.MODEL_ID, filename="model.safetensors")
             state_dict = load_file(model_path)
             model.load_state_dict(state_dict, strict=True)
             
             model.to(self.device)
             model.eval()
-            print("Model loaded successfully!")
+            logger.info("Model loaded successfully!")
             return model
             
         except Exception as e:
-            print(f"Failed to load model manually: {e}")
-            print("Trying pipeline method...")
+            logger.warning(f"Failed to load model manually: {e}. Trying pipeline method...")
             from transformers import pipeline
-            pipe = pipeline("image-segmentation", model="briaai/RMBG-2.0", trust_remote_code=True, device=0 if torch.cuda.is_available() else -1)
+            pipe = pipeline("image-segmentation", model=settings.MODEL_ID, trust_remote_code=True, device=0 if self.device.type == "cuda" else -1)
             return pipe.model
 
-    def preprocess_image(self, image, input_size=(1024, 1024)):
+    def preprocess_image(self, image: Image.Image, input_size: Tuple[int, int] = (1024, 1024)) -> torch.Tensor:
         """Preprocess input image - Standard Resize"""
         image = image.convert("RGB")
         
-        # Space uses simple resize, no letterbox
         transform = transforms.Compose([
             transforms.Resize(input_size),
             transforms.ToTensor(),
@@ -53,19 +51,18 @@ class BackgroundRemover:
         ])
         return transform(image).unsqueeze(0).to(self.device)
 
-    def postprocess_mask(self, mask, original_size):
-        """Postprocess predicted mask - Match Official Space"""
+    def postprocess_mask(self, mask: torch.Tensor, original_size: Tuple[int, int]) -> Image.Image:
+        """Postprocess predicted mask"""
         # mask is tensor (1024, 1024) range 0-1
         
         # Use ToPILImage to handle 0-1 to 0-255 conversion correctly
         pred_pil = transforms.ToPILImage()(mask)
         
-        # Resize back to original size
-        # Space uses default resize (BILINEAR), we can use BICUBIC for slightly better edges
+        # Resize back to original size using BICUBIC for better edges
         mask_image = pred_pil.resize(original_size, Image.BILINEAR)
         return mask_image
 
-    def remove_background(self, image, return_mask=False):
+    def remove_background(self, image: Union[Image.Image, str], return_mask: bool = False) -> Union[Image.Image, Tuple[Image.Image, Image.Image]]:
         """Remove background from image"""
         if not isinstance(image, Image.Image):
              image = Image.open(image)
@@ -78,13 +75,12 @@ class BackgroundRemover:
         
         # Handle output types to match space app usage: preds[-1]
         if isinstance(preds, (list, tuple)):
-            print(f"DEBUG: Output is list/tuple of length {len(preds)}")
             # Official space uses the LAST element [-1]
             preds = preds[-1]
         elif hasattr(preds, 'logits'):
             preds = preds.logits
             
-        # Apply sigmoid (as in space app)
+        # Apply sigmoid
         preds = preds.sigmoid().cpu()
         
         # Squeeze to get (H, W) or (C, H, W)
