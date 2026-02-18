@@ -15,3 +15,6 @@ inspect_config.py
 space_app.py
 .idea/
 .vscode/
+models/
+dist/
+build/

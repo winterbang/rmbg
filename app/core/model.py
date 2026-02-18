@@ -2,6 +2,7 @@ import logging
 import torch
 import numpy as np
 from PIL import Image
+from pathlib import Path
 from torchvision import transforms
 from huggingface_hub import hf_hub_download
 from transformers import AutoConfig, AutoModelForImageSegmentation
@@ -11,34 +12,122 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+import sys
+import sys
+import os
+
+# Bundled model directory (for offline operation)
+if getattr(sys, 'frozen', False):
+    # Frozen (PyInstaller)
+    base_candidates = []
+    
+    # Candidate 1: sys._MEIPASS (PyInstaller temp/resource folder)
+    if hasattr(sys, '_MEIPASS'):
+        base_candidates.append(Path(sys._MEIPASS))
+        
+    # Candidate 2: Executable directory (Contents/MacOS)
+    exe_path = Path(sys.executable).parent
+    base_candidates.append(exe_path)
+    
+    # Candidate 3: macOS Bundle Resources (Contents/Resources)
+    # exe is in .../Contents/MacOS/NoBG -> .../Contents/Resources
+    base_candidates.append(exe_path.parent / "Resources")
+    
+    BASE_DIR = None
+    BUNDLED_MODEL_DIR = None
+
+    for base in base_candidates:
+        candidate = base / "models" / "RMBG-2.0"
+        if candidate.exists():
+            BASE_DIR = base
+            BUNDLED_MODEL_DIR = candidate
+            break
+            
+    if BUNDLED_MODEL_DIR is None:
+        # Fallback to first candidate if none found (will likely fail but keep structure)
+        BASE_DIR = base_candidates[0] if base_candidates else Path(".")
+        BUNDLED_MODEL_DIR = BASE_DIR / "models" / "RMBG-2.0"
+
+else:
+    # Development (Script)
+    BASE_DIR = Path(__file__).parent.parent.parent
+    BUNDLED_MODEL_DIR = BASE_DIR / "models" / "RMBG-2.0"
+
 class BackgroundRemover:
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         self.device = torch.device(settings.DEVICE)
         logger.info(f"Using device: {self.device}")
         
+        self.progress_callback = progress_callback
         self.model = self._load_model()
         
     def _load_model(self):
         logger.info(f"Loading {settings.MODEL_ID} model...")
+        
+        # Check if bundled model exists
+        bundled_weights = BUNDLED_MODEL_DIR / "model.safetensors"
+        use_bundled = bundled_weights.exists()
+        
+        if use_bundled:
+            logger.info(f"Using bundled model from {BUNDLED_MODEL_DIR}")
+        else:
+            logger.info("Bundled model not found, will download from HuggingFace")
+        
         try:
-            config = AutoConfig.from_pretrained(settings.MODEL_ID, trust_remote_code=True)
+            # Load configuration
+            if self.progress_callback:
+                msg = "Loading configuration..." if use_bundled else "Downloading configuration..."
+                self.progress_callback(0.1, msg)
+            
+            if use_bundled:
+                config = AutoConfig.from_pretrained(
+                    str(BUNDLED_MODEL_DIR),
+                    trust_remote_code=True,
+                    local_files_only=True
+                )
+            else:
+                config = AutoConfig.from_pretrained(
+                    settings.MODEL_ID,
+                    trust_remote_code=True
+                )
+            
+            # Create model architecture
+            if self.progress_callback:
+                self.progress_callback(0.3, "Creating model architecture...")
             model = AutoModelForImageSegmentation.from_config(config, trust_remote_code=True)
             
-            # Load weights manually to ensure safe tensors loading
-            model_path = hf_hub_download(repo_id=settings.MODEL_ID, filename="model.safetensors")
-            state_dict = load_file(model_path)
+            # Load weights
+            if self.progress_callback:
+                msg = "Loading model weights..." if use_bundled else "Downloading model weights..."
+                self.progress_callback(0.5, msg)
+            
+            if use_bundled:
+                model_path = bundled_weights
+            else:
+                model_path = hf_hub_download(
+                    repo_id=settings.MODEL_ID,
+                    filename="model.safetensors"
+                )
+            
+            if self.progress_callback:
+                self.progress_callback(0.7, "Loading weights into model...")
+            state_dict = load_file(str(model_path))
             model.load_state_dict(state_dict, strict=True)
             
+            # Transfer to device
+            if self.progress_callback:
+                self.progress_callback(0.9, "Transferring to device...")
             model.to(self.device)
             model.eval()
+            
+            if self.progress_callback:
+                self.progress_callback(1.0, "Ready!")
             logger.info("Model loaded successfully!")
             return model
             
         except Exception as e:
-            logger.warning(f"Failed to load model manually: {e}. Trying pipeline method...")
-            from transformers import pipeline
-            pipe = pipeline("image-segmentation", model=settings.MODEL_ID, trust_remote_code=True, device=0 if self.device.type == "cuda" else -1)
-            return pipe.model
+            logger.error(f"Failed to load model: {e}")
+            raise RuntimeError(f"Could not load RMBG-2.0 model: {e}")
 
     def preprocess_image(self, image: Image.Image, input_size: Tuple[int, int] = (1024, 1024)) -> torch.Tensor:
         """Preprocess input image - Standard Resize"""

@@ -12,3 +12,4 @@ accelerate
 scipy
 timm
 kornia
+flet==0.25.2

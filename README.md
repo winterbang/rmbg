@@ -1,4 +1,4 @@
-# RMBG-2.0 Service
+# NoBG (RMBG-2.0 Service)
 
 [中文文档](README_CN.md)
 
@@ -43,6 +43,15 @@ A modular, production-ready Python service for removing image backgrounds using 
         export HF_TOKEN="your_token_here"
         ```
 
+5.  **Pre-download Model (Recommended)**:
+    Run the following script to download the model locally, which speeds up startup and enables offline use:
+    ```bash
+    python3 download_models.py
+    ```
+    *Note:*
+    1. *This step still requires a valid HF Token.*
+    2. *If you plan to package the app (e.g., .app or .exe), you **MUST** run this script first. Otherwise, the package will not include the model and will fail to run offline.*
+
 ## Usage
 
 1.  **Start the server**:
@@ -51,7 +60,20 @@ A modular, production-ready Python service for removing image backgrounds using 
     ```
     The server will start at `http://0.0.0.0:8000`.
 
-2.  **API Documentation**:
+2.  **Start GUI Client**:
+    ```bash
+    python3 flet_app.py
+    ```
+
+3.  **Stop Project**:
+    If you need to force stop the GUI application or service running in the background, use the `pkill` command:
+    ```bash
+    pkill -f "python3 flet_app.py"
+    # Or stop the API service
+    pkill -f "python3 run.py"
+    ```
+
+4.  **API Documentation**:
     Open `http://localhost:8000/docs` in your browser to see the interactive API documentation.
 
 ## API Endpoints
@@ -59,6 +81,17 @@ A modular, production-ready Python service for removing image backgrounds using 
 -   `GET /health`: Check service health and model status.
 -   `POST /remove-bg`: Upload image(s) to remove background.
 -   `POST /remove-bg-base64`: Process base64 encoded images.
+
+## Testing API
+
+The project includes a test script to verify that the API endpoints are working correctly (Health check, Remove background, Base64).
+
+1.  Ensure the API server is running (`python3 run.py`).
+2.  Run the test script:
+    ```bash
+    python3 test/test_api.py
+    ```
+    Results will be saved in the `test/results` directory.
 
 ## Project Structure
 

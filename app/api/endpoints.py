@@ -139,12 +139,18 @@ async def remove_background_endpoint(
         logger.error(f"Error processing upload: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
-@router.post("/remove-bg-base64")
-async def remove_background_base64(
-    image_base64: str,
-    return_mask: bool = False,
+from pydantic import BaseModel
+
+class Base64Request(BaseModel):
+    image_base64: str
+    return_mask: bool = False
     output_format: str = "png"
-):
+
+@router.post("/remove-bg-base64")
+async def remove_background_base64(req: Base64Request):
+    image_base64 = req.image_base64
+    return_mask = req.return_mask
+    output_format = req.output_format
     remover = get_remover()
     try:
         # Check if base64 string has header, e.g. "data:image/png;base64,..."

@@ -1,4 +1,4 @@
-# RMBG-2.0 服务
+# NoBG (RMBG-2.0 服务)
 
 基于 RMBG-2.0 模型的模块化、生产级 Python 服务，用于去除图片背景。
 
@@ -41,6 +41,15 @@
         export HF_TOKEN="你的token"
         ```
 
+5.  **预下载模型（推荐）**：
+    运行以下脚本将模型下载到本地，这样启动时无需再次下载，且支持离线运行：
+    ```bash
+    python3 download_models.py
+    ```
+    *注意：*
+    1. *此步骤仍需要有效的 HF Token。*
+    2. *如果您计划打包应用（例如生成 .app 或 .exe），**必须**先运行此脚本。否则打包后的程序将不包含模型，无法离线运行。*
+
 ## 使用方法
 
 1.  **启动服务器**：
@@ -49,7 +58,20 @@
     ```
     服务器将在 `http://0.0.0.0:8000` 启动。
 
-2.  **API 文档**：
+2.  **启动 GUI 客户端**：
+    ```bash
+    python3 flet_app.py
+    ```
+
+3.  **停止项目**：
+    如果需要强制停止后台运行的 GUI 应用或服务，可以使用 `pkill` 命令：
+    ```bash
+    pkill -f "python3 flet_app.py"
+    # 或者停止 API 服务
+    pkill -f "python3 run.py"
+    ```
+
+4.  **API 文档**：
     在浏览器中打开 `http://localhost:8000/docs` 查看交互式 API 文档。
 
 ## API 接口
@@ -57,6 +79,17 @@
 -   `GET /health`: 检查服务健康状态及模型加载情况。
 -   `POST /remove-bg`: 上传图片（支持单张或多张）以去除背景。
 -   `POST /remove-bg-base64`: 处理 Base64 编码的图片。
+
+## 测试 API
+
+项目包含一个测试脚本，用于验证 API 接口是否正常工作（健康检查、去除背景、Base64 接口）。
+
+1.  确保 API 服务正在运行 (`python3 run.py`)。
+2.  运行测试脚本：
+    ```bash
+    python3 test/test_api.py
+    ```
+    测试结果将保存在 `test/results` 目录下。
 
 ## 项目结构
 
