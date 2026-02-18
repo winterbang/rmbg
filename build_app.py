@@ -104,6 +104,12 @@ def build():
     except subprocess.CalledProcessError as e:
         print(f"Warning: Signing failed: {e}")
 
+    # Final cleanup: Remove the redundant onedir directory if the .app bundle exists
+    raw_dist_dir = f"dist/{app_name}"
+    if os.path.exists(raw_dist_dir) and os.path.isdir(raw_dist_dir) and os.path.exists(f"dist/{app_name}.app"):
+        print(f"Cleaning up redundant directory {raw_dist_dir}...")
+        shutil.rmtree(raw_dist_dir)
+
     print("Build complete!")
     print(f"App Bundle is at dist/{app_name}.app")
 
